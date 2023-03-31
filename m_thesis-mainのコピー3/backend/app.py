@@ -1,0 +1,356 @@
+from flask import Flask, render_template, request, flash, session, escape, redirect, url_for, jsonify
+from flask_marshmallow import Marshmallow
+from flask_cors import CORS
+import numpy as np
+import joblib
+from scipy import stats
+import pandas as pd
+import numpy as np
+from statistics import mean
+import datetime
+
+
+app = Flask(__name__, static_folder='./templates/') # Flask動かす時のおまじない。
+#app.config.from_object(__name__)
+app.config['SECRET_KEY'] = 'zJe09C5c3tMf5FnNL09C5d6SAzZoY'
+ma = Marshmallow(app)
+CORS(app)
+
+features = ['RRiM','RRiS','LP_all',
+'LP_Bathing', 'LP_Cooking', 'LP_Eating', 'LP_Goingout', 'LP_Sleeping', 'LP_Other',
+'SA_Bathing', 'SA_Cooking', 'SA_Eating', 'SA_Goingout', 'SA_Sleeping', 'SA_Other',
+#'LP_Bathing_2', 'LP_Cooking_2', 'LP_Eating_2', 'LP_Goingout_2', 'LP_Sleeping_2', 'LP_Other_2',#_2は起床後から4h
+#'SA_Bathing_2', 'SA_Cooking_2', 'SA_Eating_2', 'SA_Goingout_2', 'SA_Sleeping_2', 'SA_Other_2',
+'Bathing_LPSAprefer_LP', 'Cooking_LPSAprefer_LP', 'Eating_LPSAprefer_LP', 'Goingout_LPSAprefer_LP','Sleeping_LPSAprefer_LP', 'Other_LPSAprefer_LP', 
+'Bathing_LPSAprefer_SA', 'Cooking_LPSAprefer_SA', 'Eating_LPSAprefer_SA', 'Goingout_LPSAprefer_SA','Sleeping_LPSAprefer_SA', 'Other_LPSAprefer_SA',
+#'Bathing_LPSAprefer_LP_SA', 'Cooking_LPSAprefer_P_SA', 'Eating_LPSAprefer_LP_SA', 'Goingout_LPSAprefer_LP_SA','Sleeping_LPSAprefer_LP_SA', 'Other_LPSAprefer_LP_SA',
+]      
+
+
+def saveFile(id, day, goingoutLength,cookingLength,eatingLength,bathingLength,otherLength, pred, 
+        sleepHourStart, sleepMinStart, sleepHourEnd, sleepMinEnd,sleepingLength, timeLeft,
+        goingoutLengthPre,cookingLengthPre,eatingLengthPre,bathingLengthPre,otherLengthPre,fileState):#fileにdataframeを保存する用
+    try:
+        for p in pred:
+            for p2 in p:
+                pred=p2
+    except:
+        pass
+    featureTime = ['Date','Going-out','Cooking', 'Eating', 'Bathing',  'Other','Sleeping','pred', 'timeLeft','sleepStart', 'sleepEnd',
+    'goingoutLengthPre','cookingLengthPre','eatingLengthPre','bathingLengthPre','otherLengthPre']    
+    data = [[day,goingoutLength,cookingLength,eatingLength,bathingLength,otherLength,sleepingLength,pred,timeLeft, str(sleepHourStart)+':'+ str(sleepMinStart), str(sleepHourEnd)+':'+ str(sleepMinEnd),
+        goingoutLengthPre,cookingLengthPre,eatingLengthPre,bathingLengthPre,otherLengthPre]]
+    df = pd.DataFrame(data,columns=featureTime)
+    if fileState ==1:
+        csv = pd.read_csv('result/' + str(id) + "_1回目" + '.csv')
+        A=pd.concat([csv, df], axis=0)
+        A.to_csv('result/' + str(id) + "_1回目"+ '.csv',index=False)
+    else:
+        csv = pd.read_csv('result/' + str(id) + "_2回目" + '.csv')
+        A=pd.concat([csv, df], axis=0)
+        A.to_csv('result/' + str(id) + "_2回目" + '.csv',index=False)
+
+def makePrefer():#mixed_indicatorの設定（定数）
+    lpPrefer = pd.DataFrame(
+    {
+        "Name": [
+            "ID1SEX1", "ID2SEX1","ID3SEX1", "ID5SEX1",
+            "ID1SEX2","ID2SEX2", "ID3SEX2","ID4SEX1","ID5SEX2"
+            ],
+        'Bathing_prefer':[0.7,1.14,2.04,0.12,1,1,4,1,3], 
+        'Cooking_prefer':[0.01,1.86,0.01,1.3,0.67,1.22,0.54,1.42,1.15], 
+        'Eating_prefer':[1.09,0.94,0.88,1.09,1.61,1.16,0.64,0.83,0.76],
+        'Goingout_prefer':[1.05,0.96,1.19,0.8,0.8,1.13,1.53,0.99,0.54], 
+        'Sleeping_prefer':[0.97,0.7,1.33,1,0.95,1.02,1.02,1.09,0.92], 
+        'Other_prefer':[1.03,0.90,0.89,1.17,1.13,0.99,1.01,0.98,0.89],
+        }
+    )
+    lpPrefer = lpPrefer.set_index('Name')
+    lpPreferCol=lpPrefer.columns
+    saPrefer = pd.DataFrame(
+        {
+            "Name": [
+                "ID1SEX1", "ID2SEX1","ID3SEX1", "ID5SEX1",
+                "ID1SEX2","ID2SEX2", "ID3SEX2","ID4SEX1","ID5SEX2"
+                ],
+            'Bathing_prefer':[0.25,0.60,2.33,0.83,0.4,0.37,2.49,0.53,1.2], 
+            'Cooking_prefer':[0.01,0.01,3.37,0.61,1.84,0.53,1.34,0.37,0.92], 
+            'Eating_prefer':[0.67,0.72,1.65,0.95,0.66,0.73,1.43,0.94,1.23],
+            'Goingout_prefer':[0.93,1.12,0.84,1.11,0.71,1.10,0.86,1.26,1.07], 
+            'Sleeping_prefer':[1.52,0.61,0.83,1.04,1.11,1.31,0.78,1.31,0.48], 
+            'Other_prefer':[1.01,1.27,0.77,0.95,1.14,0.99,0.92,0.86,1.11],
+            }
+        )
+    saPrefer = saPrefer.set_index('Name')
+    saPreferCol=  saPrefer.columns
+    lpsaPrefer = lpPrefer.copy()
+    lpsaPrefer = lpPrefer * saPrefer
+    lpsaPreferCol = lpsaPrefer.columns
+    return lpsaPrefer
+
+def defineLP():#LPの予測の際に対数を代入
+        #'LP_all','LP_Bathing', 'LP_Cooking', 'LP_Eating', 'LP_Goingout', 'LP_Sleeping', 'LP_Other'
+        lp = [1931.181986,1528.488601,1822.615563,1974.988845,1294.652644,2672.004235]
+        lpAll = 1900
+        
+        return lp, lpAll
+
+def deleteFeatures(features):#不必要なものがあれば削除するための関数
+    featureDrop = [ #'RRiM','RRiS','LP_all',
+                                    #'LP_Bathing', 'LP_Cooking', 'LP_Eating', 'LP_Goingout', 'LP_Sleeping', 'LP_Other',
+                                    #'SA_Bathing', 'SA_Cooking', 'SA_Eating', 'SA_Goingout', 'SA_Sleeping', 'SA_Other',
+                                    #'LP_Bathing_2', 'LP_Cooking_2', 'LP_Eating_2', 'LP_Goingout_2', 'LP_Sleeping_2', 'LP_Other_2',#_2は起床後から4h
+                                    #'SA_Bathing_2', 'SA_Cooking_2', 'SA_Eating_2', 'SA_Goingout_2', 'SA_Sleeping_2', 'SA_Other_2',
+#                                 'Bathing_LPSAprefer_LP', 'Cooking_LPSAprefer_LP', 'Eating_LPSAprefer_LP', 'Goingout_LPSAprefer_LP','Sleeping_LPSAprefer_LP', 'Other_LPSAprefer_LP', 
+#                                 'Bathing_LPSAprefer_SA', 'Cooking_LPSAprefer_SA', 'Eating_LPSAprefer_SA', 'Goingout_LPSAprefer_SA','Sleeping_LPSAprefer_SA', 'Other_LPSAprefer_SA',
+#                                 'Bathing_LPSAprefer_LP_SA', 'Cooking_LPSAprefer_P_SA', 'Eating_LPSAprefer_LP_SA', 'Goingout_LPSAprefer_LP_SA','Sleeping_LPSAprefer_LP_SA', 'Other_LPSAprefer_LP_SA',
+] 
+
+def makeFeatures(sa):#予測用の値を生成
+    lpTemplate, lpAll = defineLP()
+    lpsaPrefer = makePrefer()
+    rriM, rriS = 1000,0.6
+    lpsaPreferLP = (lpsaPrefer.loc['ID3SEX2'].values * lpTemplate)
+    lpsaPreferSA = sa/(lpsaPrefer.loc['ID3SEX2'].values)
+    featuresValue = [rriM,rriS,lpAll, lpTemplate, sa, lpsaPreferLP, lpsaPreferSA ]
+    #featuresDay = np.concatenate([features,featuresValue])
+    return featuresValue
+
+def add_el(ar1, el1):#np.arrayを１列にするための関数（reshapeが使えなかったため作成）
+    ar1.append(el1)
+    return ar1
+def makeNpArray(parameters):
+    params = []
+    for el in parameters:
+        try:
+            for e in el:
+                params = add_el(params, e)
+        except:
+            params = add_el(params, el)
+    params = np.array(params)
+    params = params.reshape(1, -1)
+    return params
+
+# 学習済みモデルを読み込み利用します
+def predictStress(parameters):# ニューラルネットワークのモデルを読み込み
+    model = joblib.load('./nn.pkl')
+    params = makeNpArray(parameters)
+    yPreds = []
+    for m in model:
+        yPreds.append(m.predict(params))
+    yPredsBagging=[]
+    yPredsBagging, count_2=stats.mode(yPreds, axis=0)
+    return yPredsBagging
+
+
+# ラベルから体調の状態を取得します
+def stressStatus(label):
+    #print(label)
+    if label == 1:
+        return "このままだと悪くなるでしょう..."
+    elif label == 2: 
+        return "維持されるでしょう"
+    elif label == 3: 
+        return "良くなるでしょう"
+    else: 
+        return "Error"
+
+def getForm(sleepingLength, goingoutLength, cookingLength, eatingLength, bathingLength, otherLength,numberTimes):
+    timeToCount = 60*4
+    sleepingLength = float(sleepingLength)
+    Time = [sleepingLength, goingoutLength, cookingLength, eatingLength, bathingLength, otherLength]
+    print(Time)
+    timeCount = [goingoutLength * timeToCount, cookingLength * timeToCount, eatingLength * timeToCount, bathingLength * timeToCount, sleepingLength * timeToCount, otherLength * timeToCount]#特徴量が15秒に1回周期のため。
+    xTest= makeFeatures(timeCount)
+    pred = predictStress(xTest)
+    print(pred)
+    if pred==1:
+        if numberTimes == 1:
+            pred = 2
+        if numberTimes >= 2:
+            pred = 3
+    elif pred==2:
+        if numberTimes >= 2:
+            pred = 3
+    else:
+        pass
+    if sleepingLength < 6:
+        pred = 1
+    status = stressStatus(int(pred))
+    return int(pred),status
+
+def getData(data):
+    data.id = int(request.json["id"])
+    data.numberTimes = int(request.json["numberTimes"])
+    data.getupHour = int(request.json["getupHour"])
+    data.getupMin = int(request.json["getupMin"])
+    data.sleepHourStart  = int(request.json["sleepHourStart"])
+    data.sleepMinStart = int(request.json["sleepMinStart"])            
+    data.sleepHourEnd  = int(request.json["sleepHourEnd"])            
+    data.sleepMinEnd = int(request.json["sleepMinEnd"])
+    data.goingoutHourPre = int(request.json["goingoutHourPre"])
+    data.goingoutMinPre = int(request.json["goingoutMinPre"])
+    data.goingoutHour = int(request.json["goingoutHour"])
+    data.goingoutMin = int(request.json["goingoutMin"])                       
+    data.cookingHourPre  = int(request.json["cookingHourPre"])
+    data.cookingMinPre  = int(request.json["cookingMinPre"])
+    data.cookingHour  = int(request.json["cookingHour"])
+    data.cookingMin  = int(request.json["cookingMin"])
+    data.eatingHourPre = int(request.json["eatingHourPre"])            
+    data.eatingMinPre = int(request.json["eatingMinPre"])            
+    data.eatingHour = int(request.json["eatingHour"])            
+    data.eatingMin = int(request.json["eatingMin"])            
+    data.bathingHourPre  = int(request.json["bathingHourPre"])            
+    data.bathingMinPre  = int(request.json["bathingMinPre"])            
+    data.bathingHour  = int(request.json["bathingHour"])            
+    data.bathingMin  = int(request.json["bathingMin"])            
+    data.hasSecondSaved = request.json["hasSecondSaved"]
+    data.hasFirstSaved = request.json["hasFirstSaved"]
+    data.goingoutLengthPre = data.goingoutHourPre+float(data.goingoutMinPre)/60
+    data.cookingLengthPre = data.cookingHourPre+float(data.cookingMinPre)/60
+    data.eatingLengthPre = data.eatingHourPre+float(data.eatingMinPre)/60
+    data.bathingLengthPre = data.bathingHourPre+float(data.bathingMinPre)/60
+    data.goingoutLength = data.goingoutHour+float(data.goingoutMin)/60
+    data.cookingLength = data.cookingHour+float(data.cookingMin)/60
+    data.eatingLength = data.eatingHour+float(data.eatingMin)/60
+    data.bathingLength = data.bathingHour+float(data.bathingMin)/60
+    dtNow = datetime.datetime.utcnow()+datetime.timedelta(hours=9)
+    data.otherLengthPre = dtNow.hour+dtNow.minute/60-data.getupHour-data.getupMin/60-data.goingoutLengthPre-data.cookingLengthPre-data.eatingLengthPre-data.bathingLengthPre
+    data.day = dtNow.strftime('%Y年%m月%d日 %H:%M:%S')
+    data.nowHour = dtNow.hour
+    data.nowMin = dtNow.minute
+    if data.sleepHourStart >= data.nowHour:
+        data.otherLength = data.sleepHourStart+data.sleepMinStart/60-dtNow.hour-dtNow.minute/60-data.goingoutLength-data.cookingLength-data.eatingLength-data.bathingLength
+    else:
+        data.otherLength = 24 + data.sleepHourStart+data.sleepMinStart/60-dtNow.hour-dtNow.minute/60-data.goingoutLength-data.cookingLength-data.eatingLength-data.bathingLength
+
+    if data.sleepHourStart >= 18:
+        data.sleepingLength = (24 - (data.sleepHourStart + float(data.sleepMinStart)/60)) + (data.sleepHourEnd + float(data.sleepMinEnd)/60)
+        #18時睡眠の場合、今日の残り睡眠時間（24:00-18:00）＋明日の睡眠時間
+        data.timeLeft=(data.sleepHourStart + float(data.sleepMinStart)/60)-(int(dtNow.hour)+int(dtNow.hour)/60)
+    else:
+        data.sleepingLength = (data.sleepHourEnd + float(data.sleepMinEnd)/60) - (data.sleepHourStart + float(data.sleepMinStart)/60)
+        #2時睡眠の場合、今日の睡眠時間-明日の起床時間
+        data.timeLeft=(24-(int(dtNow.hour)+int(dtNow.hour)/60))+(data.sleepHourStart + float(data.sleepMinStart)/60)
+        #今日の残り時間（24:00-今の時間）+次の日の睡眠開始時間
+
+class Data:
+    id = 0
+    numberTimes = 0
+    day = ""
+    nowHour = 0
+    nowMin = 0
+    getupHour = 0
+    getupMin = 0
+    sleepHourStart = 0
+    sleepMinStart = 0
+    sleepHourEnd = 0
+    sleepMinEnd = 0
+    goingoutHourPre = 0
+    goingoutMinPre = 0
+    goingoutHour = 0
+    goingoutMin = 0
+    cookingHourPre = 0
+    cookingMinPre = 0
+    cookingHour = 0
+    cookingMin = 0
+    eatingHourPre = 0
+    eatingMinPre = 0
+    eatingHour = 0
+    eatingMin = 0
+    bathingHourPre = 0
+    bathingMinPre = 0
+    bathingHour = 0
+    bathingMin = 0
+    otherLengthPre = 0
+    otherLength = 0
+    timeLeft = 0
+    sleepingLength = 0
+    goingoutLengthPre = 0
+    goingoutLength = 0
+    cookingLengthPre = 0
+    cookingLength = 0
+    eatingLengthPre = 0
+    eatingLength = 0
+    bathingLengthPre = 0
+    bathingLength = 0
+    pred = 0
+    sendStatus = ''
+    errorMessage = ''
+    hasFirstSaved = False
+    hasSecondSaved = False
+
+
+class DataSchema(ma.Schema):
+    class Meta:
+        fields = ('id',
+            'numberTimes', 
+            'day',
+            'nowHour',
+            'nowMin',
+            'getupHour',
+            'getupMin',
+            'sleepHourStart',
+            'sleepMinStart',
+            'sleepHourEnd',
+            'sleepMinEnd',
+            'goingoutHourPre',
+            'goingoutMinPre',
+            'goingoutHour',
+            'goingoutMin',
+            'cookingHourPre',
+            'cookingMinPre',
+            'cookingHour',
+            'cookingMin',
+            'eatingHourPre',
+            'eatingMinPre',
+            'eatingHour',
+            'eatingMin',
+            'bathingHourPre',
+            'bathingMinPre',
+            'bathingHour',
+            'bathingMin',
+            'otherLengthPre',
+            'otherLength',
+            'timeLeft',
+            'sleepingLength',
+            'goingoutLengthPre',
+            'goingoutLength',
+            'cookingLengthPre',
+            'cookingLength',
+            'eatingLengthPre',
+            'eatingLength',
+            'bathingLengthPre',
+            'bathingLength',
+            'pred',
+            'sendStatus',
+            'errorMessage',
+            'hasFirstSaved',
+            'hasSecondSaved')
+        
+data_schema = DataSchema()
+
+@app.route('/', methods = ['GET','POST'])# どのページで実行する関数か設定
+def root():
+    data = Data()
+    if request.method == 'POST':
+        getData(data)
+        data.pred, data.sendStatus = getForm(data.sleepingLength,data.goingoutLength,data.cookingLength,data.eatingLength,data.bathingLength,data.otherLength,0)
+        if data.otherLengthPre < 0:
+            data.errorMessage = '起きてからの行動時間が多すぎます'
+        if data.otherLength < 0:
+            data.errorMessage = '睡眠までの残り時間に対し、行動予定時間が多すぎます'
+        if not data.hasFirstSaved and not data.errorMessage:
+            saveFile(data.id, data.day, data.goingoutLength,data.cookingLength,data.eatingLength,data.bathingLength,data.otherLength, data.pred, 
+            data.sleepHourStart, data.sleepMinStart, data.sleepHourEnd, data.sleepMinEnd,data.sleepingLength, data.timeLeft,
+            data.goingoutLengthPre,data.cookingLengthPre,data.eatingLengthPre,data.bathingLengthPre,data.otherLengthPre,fileState=1)
+            data.hasFirstSaved = True
+        
+    dtNow = datetime.datetime.utcnow()+datetime.timedelta(hours=9)
+    data.nowHour = dtNow.hour
+    data.nowMin = dtNow.minute
+
+    return data_schema.jsonify(data)
+
+if __name__ == "__main__": # 実行されたら
+    app.run(debug=True, host='0.0.0.0', port=8888, threaded=True)# デバッグモード、localhost:8888 のマルチスレッドで実行

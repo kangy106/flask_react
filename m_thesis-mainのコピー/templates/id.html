@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>Stress Predict App Result</title>
+    <style>
+        #wrapper {
+        text-align: center;
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+
+    <div id="wrapper">
+        {% for message in idForm.id.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepHourStart.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepMinStart.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepHourEnd.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepHourEnd.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.accept.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+
+        <form action="/" method="POST">
+            <p style="text-align: center;">
+                IDを入力してください{{ idForm.id }}<br>
+                入眠時間 {{ idForm.sleepHourStart }}時 {{ idForm.sleepMinStart }}分（24時間表記）<br>            
+                起床時間 {{ idForm.sleepHourEnd }}時 {{ idForm.sleepMinEnd }}分（24時間表記）<br>
+            </p>
+
+            <table align="center" border="1" >
+                <tr><th>行動の種類</th><th>過去の行動時間</th><th>今後の行動時間</th></tr>
+                <tr><td>睡眠</td><td> ↓アノーテーション内容を入力</td><td></td></tr>
+                <tr><td> 外出 </td><td>{{ idForm.goingoutHour(value=0) }}時間 {{ idForm.goingoutMin(value=0) }}分 </td><td></td></tr>
+                <tr><td> 料理 </td><td>{{ idForm.cookingHour(value=0) }}時間 {{ idForm.cookingMin(value=0) }}分 </td><td></td></tr>
+                <tr><td>食事</td><td>{{ idForm.eatingHour(value=0) }}時間 {{ idForm.eatingMin(value=0) }}分 </td><td></td></tr>
+                <tr><td>入浴</td><td>{{ idForm.bathingHour(value=0) }}時間 {{ idForm.bathingMin(value=0) }}分 </td><td></td></tr>
+                <tr><td>その他</td><td>{{ idForm.otherHour(value=0) }}時間 {{ idForm.otherMin(value=0) }}分 </td><td></td></tr>
+                <tr><td></td><td colspan="2">この予定は</td></tr>
+            </table>
+
+            IDと入眠起床時間とアノーテーション内容は<br>
+            これでいいですか？{{ idForm.accept }}<br>
+            {{ idForm.submitID }}
+        </form>
+    </div>
+

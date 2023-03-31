@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <title>Stress Predict App Result</title>
+    <style>
+        #wrapper {
+        text-align: center;
+        }
+    </style>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+    {% from "formhelpers.html" import render_field %}
+    <div id="wrapper">
+        {% for message in idForm.id.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepHourStart.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepMinStart.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepHourEnd.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+        {% for message in idForm.sleepHourEnd.errors %}
+        <div>{{ message }}</div>
+        {% endfor %}
+
+
+
+        <form action="/" method="POST">
+            <div style="text-align: left;">
+                IDを入力してください{{ idForm.id }}<br>
+                <h1>起きてからの行動</h1>
+                <p>　今日の起きてからの行動を思い出し、下の項目に何時間使ったかを入力してください。</p>
+                <div class="form" style="text-align: center;">
+                    今日の起床時間 {{ idForm.getupHour(value=data.getupHour) }}時間 {{idForm.getupMin(value=data.getupMin)}} 分(24時間表記) <br>
+                    外出 {{ idForm.goingoutHourPre(value=data.goingoutHourPre) }}時間 {{idForm.goingoutMinPre(value=data.goingoutMinPre)}} 分 <br>
+                    料理 {{ idForm.cookingHourPre(value=data.cookingHourPre) }}時間 {{idForm.cookingMinPre(value=data.cookingMinPre)}} 分 <br>
+                    食事 {{ idForm.eatingHourPre(value=data.eatingHourPre) }}時間 {{idForm.eatingMinPre(value=data.cookingMinPre)}} 分 <br>
+                    入浴 {{ idForm.bathingHourPre(value=data.bathingHourPre) }}時間 {{idForm.bathingMinPre(value=data.bathingMinPre)}} 分 <br>
+                </div>
+            </div>
+
+            <div style="text-align: left;">
+                <h1>寝るまでの行動予定</h1>
+                <p>　現在の時刻から寝るまでに行う行動の予定をたて、入力してください。</p>
+
+                <div class="form" style="text-align: center;">
+                    今日の就寝予定時刻 {{ idForm.sleepHourStart(value=data.sleepHourStart) }}時間 {{idForm.sleepMinStart(value=data.sleepMinStart)}} 分(24時間表記) <br>
+                    明日の起床予定時刻 {{ idForm.sleepHourEnd(value=data.sleepHourEnd) }}時間 {{idForm.sleepMinEnd(value=data.sleepMinEnd)}} 分(24時間表記) <br>
+                    外出 {{ idForm.goingoutHour(value=data.goingoutHour) }}時間 {{idForm.goingoutMin(value=data.goingoutMin)}} 分 <br>
+                    料理 {{ idForm.cookingHour(value=data.cookingHour) }}時間 {{idForm.cookingMin(value=data.cookingMin)}} 分 <br>
+                    食事 {{ idForm.eatingHour(value=data.eatingHour) }}時間 {{idForm.eatingMin(value=data.eatingMin)}} 分 <br>
+                    入浴 {{ idForm.bathingHour(value=data.bathingHour) }}時間 {{idForm.bathingMin(value=data.bathingMin)}} 分 <br>
+                </div>
+            </div>
+            {{ idForm.submitID }}
+        </form>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages%}
+                {%for message in messages %}
+                    <p>{{ message }}</p>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% if sendStatus %}
+            {% if pred == 1 %}
+            <img src="/templates/image/sad.png" alt="Sad image" width="50" height="50">
+            {% elif pred == 2 %}
+            <img src="/templates/image/neutral.png" alt="Neutral" width="50" height="50">
+            {% elif pred == 3 %}
+            <img src="/templates/image/happy.png" alt="Happy image" width="50" height="50">
+            {% endif %}
+            <p>この予定は{{ sendStatus }}</p>
+            
+            <a href="{{ url_for('end') }}">この結果に満足し終了する。</a>
+        {% endif %}
+    </div>
+

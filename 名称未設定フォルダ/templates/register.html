@@ -1,0 +1,19 @@
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Form</title>
+  </head>
+  <body>
+    {% from "formhelpers.html" import render_field %}
+    <form method="POST">
+      {{ form.csrf_token }}
+      {{ form.name }}
+      {{ render_field(form.age) }}
+      {{ render_field(form.password) }}
+      {{ render_field(form.re_password) }}
+      {{ render_field(form.accept) }}
+      {{ render_field(form.comment) }}
+      {{ form.submit() }}
+    </form>
+  </body>
+</html>
